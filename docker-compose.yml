@@ -1,0 +1,80 @@
+# Local stack: Postgres + Redis + API + worker + frontend.
+#
+#   docker compose up --build
+#   docker compose exec api node dist/db/seed.js        # sample data
+#
+# Scale-out demo (stateless API, shared Redis/Postgres):
+#   docker compose up --build --scale api=3 --scale worker=2
+# The frontend's nginx load-balances /api across all api replicas.
+
+x-backend-env: &backend-env
+  DATABASE_URL: postgres://ticketing:ticketing@postgres:5432/ticketing
+  REDIS_URL: redis://redis:6379
+  PORT: "4000"
+  AUTH_SECRET: dev-only-secret-change-me
+  # --- concurrency knobs: change, `docker compose up -d`, re-run the drop ---
+  LOCK_STRATEGY: pessimistic          # pessimistic | optimistic
+  CHECKOUT_MODE: queue                # queue | direct
+  BOOKING_ISOLATION: READ COMMITTED   # READ COMMITTED | REPEATABLE READ | SERIALIZABLE
+  DB_POOL_SIZE: "10"
+  WORKER_CONCURRENCY: "8"
+  QUEUE_RATE_PER_SEC: "500"
+  MAX_QUEUE_DEPTH: "5000"
+  HOLD_TTL_SECONDS: "300"
+  RATE_LIMIT_USER_MAX: "20"
+  RATE_LIMIT_IP_MAX: "100000"         # load test comes from one IP
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ticketing
+      POSTGRES_PASSWORD: ticketing
+      POSTGRES_DB: ticketing
+    # max_connections must exceed (api replicas + worker replicas) x DB_POOL_SIZE.
+    command: ["postgres", "-c", "max_connections=200"]
+    ports: ["5433:5432"]   # 5433 on the host so it won't clash with a local Postgres
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticketing"]
+      interval: 2s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      retries: 30
+
+  api:
+    build: ./backend
+    command: ["node", "dist/server.js"]
+    environment:
+      <<: *backend-env
+      PROCESS_ROLE: api
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    # No fixed host port, so `--scale api=N` works. Reach it via the frontend
+    # (http://localhost:8080/api) — nginx proxies to every replica.
+    expose: ["4000"]
+
+  worker:
+    build: ./backend
+    command: ["node", "dist/worker.js"]
+    environment:
+      <<: *backend-env
+      PROCESS_ROLE: worker
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  frontend:
+    build: ./frontend
+    ports: ["8080:80"]
+    depends_on: [api]
+
+volumes:
+  pgdata:

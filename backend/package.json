@@ -1,0 +1,36 @@
+{
+  "name": "ticketing-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Event ticket booking system - concurrency control & system design learning project",
+  "type": "commonjs",
+  "scripts": {
+    "dev:api": "tsx watch src/server.ts",
+    "dev:worker": "tsx watch src/worker.ts",
+    "build": "tsc -p tsconfig.json",
+    "start:api": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
+    "migrate": "tsx src/db/migrate.ts",
+    "seed": "tsx src/db/seed.ts",
+    "ticket-drop": "tsx src/scripts/ticketDrop.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start:all": "node dist/all.js",
+    "dev:all": "tsx watch src/all.ts"
+  },
+  "dependencies": {
+    "bullmq": "^6.3.8",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "ioredis": "^5.11.1",
+    "pg": "^8.23.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.2",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
